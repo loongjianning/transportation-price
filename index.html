@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>科技器材空海运决策分析模型 (Air vs. Sea Freight Decision Model)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chosen Palette: Slate & Blue/Teal Neutrals -->
+    <!-- Application Structure Plan: Dashboard layout. Top section explains core concepts (Chargeable Weight & Time Value). Middle section provides an interactive calculator for specific shipments. Bottom section provides sensitivity analysis charts to visualize the break-even points for volume density and cargo value, crucial for high-value tech equipment. -->
+    <!-- Visualization & Content Choices: 
+         1. Interactive Calculator -> Goal: Inform -> Dynamic Stats & Formula mapping.
+         2. Cost Breakdown -> Goal: Compare -> Stacked Bar Chart (Chart.js) -> Shows freight vs capital cost clearly.
+         3. Value Threshold Analysis -> Goal: Change/Trend -> Line Chart (Chart.js) -> Demonstrates at what exact cargo value Air becomes cheaper than Sea due to time saved. 
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; color: #334155; }
+        .chart-container { position: relative; width: 100%; max-width: 800px; margin-left: auto; margin-right: auto; height: 350px; max-height: 400px; }
+        @media (max-width: 768px) { .chart-container { height: 250px; } }
+        input[type="number"] { width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; background-color: #ffffff; margin-top: 0.25rem; outline: none; transition: border-color 0.2s; }
+        input[type="number"]:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .card { background: white; border-radius: 0.75rem; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); padding: 1.5rem; border: 1px solid #e2e8f0; }
+    </style>
+</head>
+<body class="antialiased p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-8">
+        
+        <header class="text-center pb-6 border-b border-gray-200">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-800 mb-3">科技器材：空海运综合成本决策模型</h1>
+            <p class="text-slate-500 max-w-3xl mx-auto text-sm md:text-base">
+                在国际贸易中，决定使用60元/kg的空运还是23元/kg的海运，不能仅看运费单价。由于科技器材属于典型的高价值商品，我们必须引入<b>“总拥有成本 (TCO)”</b>公式：<code>总成本 = 实际运费 + 运输途中的资金占用成本</code>。同时需考虑航空与海运对<b>“体积重”</b>的不同计算标准。
+            </p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <div class="lg:col-span-4 space-y-6">
+                <div class="card">
+                    <h2 class="text-xl font-bold text-slate-700 mb-4 border-l-4 border-blue-500 pl-3">第一步：输入货物参数</h2>
+                    <p class="text-xs text-slate-500 mb-4">调整以下参数，右侧结果与图表将实时更新。</p>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-600">货物实际总毛重 (kg)</label>
+                            <input type="number" id="inputWeight" value="500" min="1" step="10">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-600">货物总体积 (CBM/立方米)</label>
+                            <input type="number" id="inputVolume" value="2" min="0.1" step="0.1">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-600">货物总价值 (人民币 RMB)</label>
+                            <input type="number" id="inputValue" value="2000000" min="1000" step="10000">
+                            <p class="text-xs text-slate-400 mt-1">科技产品货值通常较高，这是决策关键。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-slate-50">
+                    <h2 class="text-lg font-bold text-slate-700 mb-4">市场及物流基准假设</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600">空运单价 (元/kg)</label>
+                            <input type="number" id="priceAir" value="60">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600">海运单价 (元/kg)</label>
+                            <input type="number" id="priceSea" value="23">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600">空运时长 (天)</label>
+                            <input type="number" id="timeAir" value="5">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600">海运时长 (天)</label>
+                            <input type="number" id="timeSea" value="35">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs font-semibold text-slate-600">企业资金年化成本率 (%)</label>
+                            <input type="number" id="rateCapital" value="8" step="0.5">
+                            <p class="text-xs text-slate-400 mt-1">如贷款利率或预期投资回报率。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-8 space-y-6">
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="card text-center border-t-4 border-blue-500">
+                        <div class="text-sm text-slate-500 font-semibold mb-1">空运总成本估算</div>
+                        <div class="text-3xl font-bold text-blue-600" id="outTotalAir">¥0</div>
+                        <div class="text-xs text-slate-400 mt-2" id="outDetailAir">运费: ¥0 | 资金占用: ¥0</div>
+                        <div class="text-xs text-slate-500 mt-1" id="outCWAir">计费重量: 0 kg</div>
+                    </div>
+                    <div class="card text-center border-t-4 border-teal-500">
+                        <div class="text-sm text-slate-500 font-semibold mb-1">海运总成本估算</div>
+                        <div class="text-3xl font-bold text-teal-600" id="outTotalSea">¥0</div>
+                        <div class="text-xs text-slate-400 mt-2" id="outDetailSea">运费: ¥0 | 资金占用: ¥0</div>
+                        <div class="text-xs text-slate-500 mt-1" id="outCWSea">计费重量: 0 kg</div>
+                    </div>
+                    <div class="card bg-slate-800 text-white flex flex-col justify-center items-center">
+                        <div class="text-sm text-slate-300 font-semibold mb-1">系统智能推荐</div>
+                        <div class="text-4xl font-extrabold mb-2" id="recommendationText">计算中</div>
+                        <div class="text-xs text-slate-400 text-center px-2" id="recommendationReason">分析运费与时间价值的博弈...</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="card">
+                        <h3 class="text-md font-bold text-slate-700 mb-2">当前方案成本结构对比</h3>
+                        <p class="text-xs text-slate-500 mb-4">直观对比运费成本与因运输时间产生的无形资金成本。</p>
+                        <div class="chart-container">
+                            <canvas id="barChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3 class="text-md font-bold text-slate-700 mb-2">货值临界点分析 (灵敏度)</h3>
+                        <p class="text-xs text-slate-500 mb-4">当其他条件不变时，货物总价值达到多少时，空运将比海运更划算？</p>
+                        <div class="chart-container">
+                            <canvas id="lineChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-blue-50 border-blue-100">
+                    <h3 class="text-lg font-bold text-blue-800 mb-2">经典标准与通用结论</h3>
+                    <div class="text-sm text-blue-900 space-y-2 leading-relaxed" id="conclusionText">
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            weight: 500, volume: 2, value: 2000000, 
+            pAir: 60, pSea: 23, tAir: 5, tSea: 35, rCap: 8
+        };
+
+        const volRatioAir = 167; 
+        const volRatioSea = 167; 
+
+        let barChartInstance = null;
+        let lineChartInstance = null;
+
+        function init() {
+            document.querySelectorAll('input').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const id = e.target.id;
+                    const val = parseFloat(e.target.value);
+                    if(isNaN(val)) return;
+
+                    if(id === 'inputWeight') state.weight = val;
+                    if(id === 'inputVolume') state.volume = val;
+                    if(id === 'inputValue') state.value = val;
+                    if(id === 'priceAir') state.pAir = val;
+                    if(id === 'priceSea') state.pSea = val;
+                    if(id === 'timeAir') state.tAir = val;
+                    if(id === 'timeSea') state.tSea = val;
+                    if(id === 'rateCapital') state.rCap = val;
+
+                    calculateAndUpdate();
+                });
+            });
+
+            initCharts();
+            calculateAndUpdate();
+        }
+
+        function calculateAndUpdate() {
+            const cwAir = Math.max(state.weight, state.volume * volRatioAir);
+            const cwSea = Math.max(state.weight, state.volume * volRatioSea);
+
+            const fAir = cwAir * state.pAir;
+            const fSea = cwSea * state.pSea;
+
+            const dailyRate = (state.rCap / 100) / 365;
+            const capAir = state.value * dailyRate * state.tAir;
+            const capSea = state.value * dailyRate * state.tSea;
+
+            const totalAir = fAir + capAir;
+            const totalSea = fSea + capSea;
+
+            document.getElementById('outTotalAir').innerText = `¥${Math.round(totalAir).toLocaleString()}`;
+            document.getElementById('outDetailAir').innerText = `运费: ¥${Math.round(fAir).toLocaleString()} | 资金: ¥${Math.round(capAir).toLocaleString()}`;
+            document.getElementById('outCWAir').innerText = `空运计费重量: ${cwAir.toFixed(1)} kg ${cwAir > state.weight ? '(泡货)' : '(重货)'}`;
+
+            document.getElementById('outTotalSea').innerText = `¥${Math.round(totalSea).toLocaleString()}`;
+            document.getElementById('outDetailSea').innerText = `运费: ¥${Math.round(fSea).toLocaleString()} | 资金: ¥${Math.round(capSea).toLocaleString()}`;
+            document.getElementById('outCWSea').innerText = `海运计费重量: ${cwSea.toFixed(1)} kg ${cwSea > state.weight ? '(泡货)' : '(重货)'}`;
+
+            const recBox = document.getElementById('recommendationText');
+            const recBoxParent = recBox.parentElement;
+            const recReason = document.getElementById('recommendationReason');
+            const diff = Math.abs(totalAir - totalSea);
+
+            if (totalAir < totalSea) {
+                recBox.innerText = "建议：空运";
+                recBoxParent.classList.remove('bg-slate-800', 'bg-teal-600');
+                recBoxParent.classList.add('bg-blue-600');
+                recReason.innerText = `虽运费高，但节省的资金时间成本覆盖了差价，总计节省 ¥${Math.round(diff).toLocaleString()}`;
+            } else {
+                recBox.innerText = "建议：海运";
+                recBoxParent.classList.remove('bg-slate-800', 'bg-blue-600');
+                recBoxParent.classList.add('bg-teal-600');
+                recReason.innerText = `货物价值时间成本未超过高昂的空运费，总计节省 ¥${Math.round(diff).toLocaleString()}`;
+            }
+
+            const breakEvenValue = ((fAir - fSea) / (dailyRate * (state.tSea - state.tAir)));
+            const density = state.weight / state.volume;
+
+            let conclusionHTML = `
+                <p><b>1. 计费重量法则：</b>国际物流无论空运还是快递型海运，皆采用“取大值”法则。当前您的货物密度为 <b>${Math.round(density)} kg/m³</b>。由于空/海运标准泡重比通常在 167kg/m³ 左右，当货物密度 < 167 时属于“泡货”（按体积计费），反之属于“重货”（按实际重量计费）。</p>
+                <p><b>2. 经典决策函数方程：</b> <code>货值 × 日资金利率 × (海运天数 - 空运天数) > (空运费 - 海运费)</code>。当等式成立时，应选空运。</p>
+            `;
+
+            if (breakEvenValue > 0) {
+                conclusionHTML += `<p><b>3. 您的专属结论：</b>在当前重量和体积下，当您的货物总价值超过 <b>¥${Math.round(breakEvenValue).toLocaleString()}</b> 时，采用空运从总成本上来说是更经济的选择。科技器材通常货值极高，这也是为什么精密仪器、芯片等大多采用空运的核心原因。</p>`;
+            } else {
+                conclusionHTML += `<p><b>3. 您的专属结论：</b>在当前设定下，空运运费甚至低于或等于海运（可能参数异常），绝对应该选择空运。</p>`;
+            }
+            document.getElementById('conclusionText').innerHTML = conclusionHTML;
+
+            updateBarChart(fAir, capAir, fSea, capSea);
+            updateLineChart(cwAir, cwSea, dailyRate);
+        }
+
+        function initCharts() {
+            const ctxBar = document.getElementById('barChart').getContext('2d');
+            barChartInstance = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: ['空运方案', '海运方案'],
+                    datasets: [
+                        { label: '实际运费成本 (RMB)', backgroundColor: '#3b82f6', data: [0, 0] },
+                        { label: '隐性资金占用成本 (RMB)', backgroundColor: '#94a3b8', data: [0, 0] }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+
+            const ctxLine = document.getElementById('lineChart').getContext('2d');
+            lineChartInstance = new Chart(ctxLine, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: '空运总成本', borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', data: [], fill: true, tension: 0.3 },
+                        { label: '海运总成本', borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.1)', data: [], fill: true, tension: 0.3 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: false } },
+                    plugins: { 
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                title: (context) => {
+                                    return '假设货值: ¥' + parseInt(context[0].label).toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateBarChart(fAir, capAir, fSea, capSea) {
+            barChartInstance.data.datasets[0].data = [fAir, fSea];
+            barChartInstance.data.datasets[1].data = [capAir, capSea];
+            barChartInstance.update();
+        }
+
+        function updateLineChart(cwAir, cwSea, dailyRate) {
+            const fAir = cwAir * state.pAir;
+            const fSea = cwSea * state.pSea;
+            
+            const breakEvenValue = ((fAir - fSea) / (dailyRate * (state.tSea - state.tAir)));
+            let startVal = Math.max(0, breakEvenValue * 0.2);
+            let endVal = breakEvenValue * 1.8;
+            if(breakEvenValue <= 0 || !isFinite(breakEvenValue)) {
+                startVal = state.value * 0.5;
+                endVal = state.value * 1.5;
+            }
+
+            const step = (endVal - startVal) / 8;
+            const labels = [];
+            const dataAir = [];
+            const dataSea = [];
+
+            for(let i=0; i<=8; i++) {
+                let v = startVal + (step * i);
+                labels.push(Math.round(v));
+                dataAir.push(fAir + (v * dailyRate * state.tAir));
+                dataSea.push(fSea + (v * dailyRate * state.tSea));
+            }
+
+            lineChartInstance.data.labels = labels;
+            lineChartInstance.data.datasets[0].data = dataAir;
+            lineChartInstance.data.datasets[1].data = dataSea;
+            lineChartInstance.update();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
